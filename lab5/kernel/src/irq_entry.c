@@ -7,6 +7,9 @@
 static void show_irq_debug_msg(int type, unsigned long spsr, unsigned long elr,
                                unsigned long esr) {
     print_string("\r\n");
+    print_string("Exception type: ");
+    print_d(type);
+    print_string(", ");
     print_string(get_exception_message(type));
     print_string(", SPSR: ");
     print_h(spsr);
@@ -56,7 +59,7 @@ void el1_irq_entry(int type, unsigned long spsr, unsigned long elr,
     enable_irq();
 }
 
-void handle_invaild_entry(int type, unsigned long spsr, unsigned long elr,
+void invalid_exception_entry(int type, unsigned long spsr, unsigned long elr,
                              unsigned long esr) {
     show_irq_debug_msg(type, spsr, elr, esr);
     while (1);

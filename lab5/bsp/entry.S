@@ -1,225 +1,235 @@
 #include <kernel/bsp_port/entry.h>
 #include <kernel/bsp_port/syscall.h>
-#include <bsp/asm/sysregs.h>
+#include "irq.h"
+
+.section ".text"
 
 .global set_exception_vector_table
 
-.macro handle_invalid_entry el, type
-    kernel_entry \el
-    mov    x0, #\type
-    mrs    x1, esr_el1
-    mrs    x2, elr_el1
-    bl     show_invalid_entry_message
-    b      err_hang
-.endm
 
-.macro kernel_entry, el
-    sub    sp, sp, #S_FRAME_SIZE
-    stp    x0, x1, [sp, #16 * 0]
-    stp    x2, x3, [sp, #16 * 1]
-    stp    x4, x5, [sp, #16 * 2]
-    stp    x6, x7, [sp, #16 * 3]
-    stp    x8, x9, [sp, #16 * 4]
-    stp    x10, x11, [sp, #16 * 5]
-    stp    x12, x13, [sp, #16 * 6]
-    stp    x14, x15, [sp, #16 * 7]
-    stp    x16, x17, [sp, #16 * 8]
-    stp    x18, x19, [sp, #16 * 9]
-    stp    x20, x21, [sp, #16 * 10]
-    stp    x22, x23, [sp, #16 * 11]
-    stp    x24, x25, [sp, #16 * 12]
-    stp    x26, x27, [sp, #16 * 13]
-    stp    x28, x29, [sp, #16 * 14]
-
-    .if \el == 0
+// save general registers to stack
+.macro save_all el
+    //bl save_all_debug
+    sub sp, sp, 16*17
+    stp x0, x1, [sp ,16 * 0]    // storing the contents of x0 and x1 to the address pointed by the stack pointer sp with an offset of 16 bytes
+    stp x2, x3, [sp ,16 * 1]    // stp: Store Pair and it's used to store a pair of 64-bit (8-byte) registers to memory
+    stp x4, x5, [sp ,16 * 2]
+    stp x6, x7, [sp ,16 * 3]
+    stp x8, x9, [sp ,16 * 4]
+    stp x10, x11, [sp ,16 * 5]
+    stp x12, x13, [sp ,16 * 6]
+    stp x14, x15, [sp ,16 * 7]
+    stp x16, x17, [sp ,16 * 8]
+    stp x18, x19, [sp ,16 * 9]
+    stp x20, x21, [sp ,16 * 10]
+    stp x22, x23, [sp ,16 * 11]
+    stp x24, x25, [sp ,16 * 12]
+    stp x26, x27, [sp ,16 * 13]
+    stp x28, x29, [sp ,16 * 14]
+    
+    .if \el == 0                // using two distinct stack pointers for EL0 and EL1
         mrs x21, sp_el0
     .else
-        add x21, sp, #S_FRAME_SIZE
-    .endif                     // \el == 0
+        add x21, sp, 16*17      // using the same stack pointer for EL1 & sp will be switched by the cpu_switch_to function
+    .endif
 
     mrs x22, elr_el1
     mrs x23, spsr_el1
 
-    stp x30, x21, [sp, #16 * 15]
-    stp x22, x23, [sp, #16 * 16]
+    stp x30, x21, [sp ,16 * 15]
+    stp x22, x23, [sp ,16 * 16]
 .endm
 
-.macro kernel_exit, el
-    ldp    x22, x23, [sp, #16 * 16]
-    ldp    x30, x21, [sp, #16 * 15]
+// load general registers from stack
+.macro load_all el
+    //bl load_all_debug
+    ldp x22, x23, [sp ,16 * 16]
+    ldp x30, x21, [sp ,16 * 15]
 
     .if \el == 0
         msr sp_el0, x21
-    .endif          // \el == 0
+    .endif
 
     msr elr_el1, x22
     msr spsr_el1, x23
 
-    ldp    x0, x1, [sp, #16 * 0]
-    ldp    x2, x3, [sp, #16 * 1]
-    ldp    x4, x5, [sp, #16 * 2]
-    ldp    x6, x7, [sp, #16 * 3]
-    ldp    x8, x9, [sp, #16 * 4]
-    ldp    x10, x11, [sp, #16 * 5]
-    ldp    x12, x13, [sp, #16 * 6]
-    ldp    x14, x15, [sp, #16 * 7]
-    ldp    x16, x17, [sp, #16 * 8]
-    ldp    x18, x19, [sp, #16 * 9]
-    ldp    x20, x21, [sp, #16 * 10]
-    ldp    x22, x23, [sp, #16 * 11]
-    ldp    x24, x25, [sp, #16 * 12]
-    ldp    x26, x27, [sp, #16 * 13]
-    ldp    x28, x29, [sp, #16 * 14]
-    add    sp, sp, #S_FRAME_SIZE
-    eret
+    ldp x0, x1, [sp ,16 * 0]
+    ldp x2, x3, [sp ,16 * 1]
+    ldp x4, x5, [sp ,16 * 2]
+    ldp x6, x7, [sp ,16 * 3]
+    ldp x8, x9, [sp ,16 * 4]
+    ldp x10, x11, [sp ,16 * 5]
+    ldp x12, x13, [sp ,16 * 6]
+    ldp x14, x15, [sp ,16 * 7]
+    ldp x16, x17, [sp ,16 * 8]
+    ldp x18, x19, [sp ,16 * 9]
+    ldp x20, x21, [sp ,16 * 10]
+    ldp x22, x23, [sp ,16 * 11]
+    ldp x24, x25, [sp ,16 * 12]
+    ldp x26, x27, [sp ,16 * 13]
+    ldp x28, x29, [sp ,16 * 14]
+    ldr x30, [sp, 16 * 15]
+    add sp, sp, 16*17
 .endm
 
 .macro ventry label
-    b      \label                   // branch to a handler function.
-    .align 7                        // entry size is 0x80, .align will pad 0
+    b \label        // branch to a handler function.
+    .align 7        // entry size is 0x80, .align will pad 0
 .endm
 
 
-/*
- * Exception vectors.
- */
-.align	11
-.globl vectors 
-vectors:
-	ventry	sync_invalid_el1t			// Synchronous EL1t
-	ventry	irq_invalid_el1t			// IRQ EL1t
-	ventry	fiq_invalid_el1t			// FIQ EL1t
-	ventry	error_invalid_el1t			// Error EL1t
+.global exception_vector_table
+.align 11 // vector table should be aligned to 0x800 (2^11 = 0x1000_0000_0000 = 0x800)
+exception_vector_table:
 
-	ventry	sync_invalid_el1h			// Synchronous EL1h
-    ventry	el1_irq				    	// IRQ EL1h
-	ventry	fiq_invalid_el1h			// FIQ EL1h
-	ventry	error_invalid_el1h			// Error EL1h
+    //==========================================================
+    // Exception from the current EL while using SP_EL0 (exception level not changed)
 
-	ventry	el0_sync			    	// Synchronous 64-bit EL0
-	ventry	el0_irq					    // IRQ 64-bit EL0
-	ventry	fiq_invalid_el0_64			// FIQ 64-bit EL0
-	ventry	error_invalid_el0_64		// Error 64-bit EL0
+    ventry SYNC_EL1T        /* Synchronous EL1t */
+    ventry IRQ_EL1T         /* IRQ or vIRQ EL1t */
+    ventry FIQ_EL1T         /* FIQ or vFIQ EL1t */
+    ventry SERROR_EL1T      /* SError or vSError EL1t */
+    
 
-	ventry	sync_invalid_el0_32			// Synchronous 32-bit EL0
-	ventry	irq_invalid_el0_32			// IRQ 32-bit EL0
-	ventry	fiq_invalid_el0_32			// FIQ 32-bit EL0
-	ventry	error_invalid_el0_32		// Error 32-bit EL0
+    //==========================================================
+    // Exception from the current EL while using SP_ELx (exception level not changed)
 
-sync_invalid_el1t:
-	handle_invalid_entry 1,  SYNC_INVALID_EL1t
+    ventry SYNC_EL1H        /* Synchronous EL1h */
+    ventry EL1_IRQ          /* IRQ or vIRQ EL1h */
+    ventry FIQ_EL1H         /* FIQ or vFIQ EL1h */
+    ventry SERROR_EL1H      /* SError or vSError EL1h */
 
-irq_invalid_el1t:
-	handle_invalid_entry  1, IRQ_INVALID_EL1t
+    //==========================================================
+    // Exception from a lower EL and all lower ELs are AArch64 (Moves to higher exception level)
 
-fiq_invalid_el1t:
-	handle_invalid_entry  1, FIQ_INVALID_EL1t
+    ventry EL0_SYNC          /* Synchronous EL0t */   
+    ventry EL0_IRQ           /* IRQ or vIRQ EL0t */
+    ventry FIQ_64_EL0T       /* FIQ or vFIQ EL0t */
+    ventry SERROR_64_EL0T    /* SError or vSError EL0t */
+    //==========================================================
+    // Exception from a lower EL and all lower ELs are AArch32 Moves to higher exception level
 
-error_invalid_el1t:
-	handle_invalid_entry  1, ERROR_INVALID_EL1t
-
-sync_invalid_el1h:
-	handle_invalid_entry  1, SYNC_INVALID_EL1h
-
-fiq_invalid_el1h:
-	handle_invalid_entry  1, FIQ_INVALID_EL1h
-
-error_invalid_el1h:
-	handle_invalid_entry  1, ERROR_INVALID_EL1h
-
-fiq_invalid_el0_64:
-	handle_invalid_entry  0, FIQ_INVALID_EL0_64
-
-error_invalid_el0_64:
-	handle_invalid_entry  0, ERROR_INVALID_EL0_64
-
-sync_invalid_el0_32:
-	handle_invalid_entry  0, SYNC_INVALID_EL0_32
-
-irq_invalid_el0_32:
-	handle_invalid_entry  0, IRQ_INVALID_EL0_32
-
-fiq_invalid_el0_32:
-	handle_invalid_entry  0, FIQ_INVALID_EL0_32
-
-error_invalid_el0_32:
-	handle_invalid_entry  0, ERROR_INVALID_EL0_32
-
-// for start.S to set the exception vector table
-set_exception_vector_table:
-	adr x0, vectors                // get the base address of the exception vector table
-	msr vbar_el1, x0               // set the base address of the exception vector table
-	ret
-
-el1_irq:
-	kernel_entry 1 
-	bl	el1_irq_entry
-	kernel_exit 1 
-
-el0_irq:
-	kernel_entry 0 
-	bl	el0_irq_entry
-	kernel_exit 0 
-
-el0_sync:
-	kernel_entry 0
-	mrs	x25, esr_el1				    // read the syndrome register
-	lsr	x24, x25, #ESR_ELx_EC_SHIFT		// exception class
-	cmp	x24, #ESR_ELx_EC_SVC64			// SVC in 64-bit state
-	b.eq	el0_svc
-	handle_invalid_entry 0, SYNC_ERROR
-
-sc_nr	.req	x25  					// number of system calls
-scno	.req	x26	   				    // syscall number
-stbl	.req	x27					    // syscall table pointer
-
-el0_svc:
-	adr	stbl, sys_call_table			// load syscall table pointer
-	uxtw	scno, w8				    // syscall number in w8
-	mov	sc_nr, #__NR_syscalls
-	bl	enable_irq
-	cmp     scno, sc_nr               	// check upper syscall limit
-	b.hs	ni_sys
-
-	ldr	x16, [stbl, scno, lsl #3]		// address in the syscall table
-	blr	x16					            // call sys_* routine
-	b	ret_from_syscall
-ni_sys:
-	handle_invalid_entry 0, SYSCALL_ERROR
-ret_from_syscall:
-	bl	disable_irq				
-	str	x0, [sp, #S_X0]				    // returned x0
-	kernel_exit 0
+    ventry SYNC_32_EL0T     /* Synchronous 32-bit EL0t */
+    ventry IRQ_32_EL0T      /* IRQ or vIRQ 32-bit EL0t */
+    ventry FIQ_32_EL0T      /* FIQ or vFIQ 32-bit EL0t */
+    ventry SERROR_32_EL0T   /* SError or vSError 32-bit EL0t */
 
 
-// page 2107
-.global from_el2_to_el1
-from_el2_to_el1:
-	mov x0, (1 << 31) // EL1 uses aarch64
-	msr hcr_el2, x0   // msr: Status Register <-- Register (page 1924)
-	mov x0, 0x3c5     // EL1h (SPSel = 1) with interrupt disabled (D = 1, A = 1, I = 1, F = 1, M[3:0] = 5) EL1h
-	msr spsr_el2, x0  // Save the current processor's state
-	msr elr_el2, lr   // Save the exception return address
-	eret              // return to EL1 (use eret to return from the exception)
+.macro handle_invalid_entry el, type
+    save_all \el
+    mov x0, #\type
+    mrs x1, spsr_el1
+    mrs x2, elr_el1
+    mrs x3, esr_el1
+    bl invalid_exception_entry
+    b error_hang
+.endm
+
+SYNC_EL1T:
+    handle_invalid_entry 1, SYNC_INVALID_EL1t
+
+IRQ_EL1T:
+    handle_invalid_entry 1, IRQ_INVALID_EL1t
+
+FIQ_EL1T:
+    handle_invalid_entry 1, FIQ_INVALID_EL1t
+
+SERROR_EL1T:
+    handle_invalid_entry 1, ERROR_INVALID_EL1t
+
+SYNC_EL1H:
+    handle_invalid_entry 1, SYNC_INVALID_EL1h
+
+EL1_IRQ:
+    save_all 1
+    bl el0_irq_entry
+    load_all 1
+    eret
+
+FIQ_EL1H:
+    handle_invalid_entry 1, FIQ_INVALID_EL1h
+
+SERROR_EL1H:
+    handle_invalid_entry 1, ERROR_INVALID_EL1h
+
+EL0_SYNC: //[TODO]
+    save_all 0
+    mrs x25, esr_el1
+    lsr x24, x25, #ESR_ELx_EC_SHIFT
+    cmp x24, #ESR_ELx_EC_SVC64      // check if the exception is a system call
+    b.eq el0_svc
+    handle_invalid_entry 0, SYNC_ERROR  // if not a system call, handle the exception
+
+EL0_IRQ:
+    save_all 0
+    bl el0_irq_entry
+    load_all 0
+    eret
+
+FIQ_64_EL0T:
+    handle_invalid_entry 0, FIQ_INVALID_EL0_64
+
+SERROR_64_EL0T:
+    handle_invalid_entry 0, ERROR_INVALID_EL0_64
+
+SYNC_32_EL0T:
+    handle_invalid_entry 0, SYNC_INVALID_EL0_32
+
+IRQ_32_EL0T:
+    handle_invalid_entry 0, IRQ_INVALID_EL0_32
+
+FIQ_32_EL0T:
+    handle_invalid_entry 0, FIQ_INVALID_EL0_32
+
+SERROR_32_EL0T:
+    handle_invalid_entry 0, ERROR_INVALID_EL0_32
+
+
+// creates alias
+sc_nr   .req    x25                  // number of system calls
+scno    .req    x26                  // syscall number
+stbl    .req    x27                  // syscall table pointer
 
 .global from_el1_to_el0
 from_el1_to_el0:
-	mov x2, 0x3c0
-	msr spsr_el1, x2
-	msr sp_el0, x1                      // pass the stack pointer address from arg
-	msr elr_el1, x0                     // pass the program's start address from arg
-	eret
+    mov x2, 0x3c0
+    msr spsr_el1, x2
+    msr sp_el0, x1      // pass the stack pointer address from arg
+    msr elr_el1, x0     // pass the program's start address from arg
+    eret
 
-.globl ret_from_fork
+.global ret_from_fork   // entry point for executing the process
 ret_from_fork:
-	bl	schedule_tail
-	cbz	x19, ret_to_user			    // not a kernel thread
-	mov	x0, x20                         // restore arguments
-	blr	x19                             // return to the new process
-ret_to_user:
-	bl disable_irq				
-    // bl sys_debug_msg
-	kernel_exit 0 
+	bl	schedule_tail   // preemptive enable
+    cbz x19, ret_to_user
+	mov	x0, x20
+	blr	x19 		//should never return
 
-err_hang:
-    b     err_hang
+ret_to_user:
+    bl disable_irq
+    load_all 0
+    eret
+
+el0_svc:
+    adr    stbl, sys_call_table      // load syscall table pointer 
+    uxtw   scno, w8                  // syscall number in w8, uxtw: Unsigned Extend Word
+    mov    sc_nr, #__NR_syscalls
+    bl     enable_irq
+    cmp    scno, sc_nr               // check upper syscall limit
+    b.hs   ni_sys                   // hs: higher or same
+
+    ldr    x16, [stbl, scno, lsl #3] // address in the syscall table, x16 = stbl[scno]
+    blr    x16                       // call sys_* routine
+    b      ret_from_syscall
+
+ret_from_syscall:
+    bl    disable_irq
+    str   x0, [sp, #S_X0]             // returned x0 (overwritten the original x0 value on the stack)
+    load_all 0
+    eret
+
+ni_sys:
+    handle_invalid_entry 0, SYSCALL_ERROR
+
+error_hang:
+    b error_hang

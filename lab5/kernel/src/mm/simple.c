@@ -3,7 +3,7 @@
 #include <lib/stdlib.h>
 
 extern uint64_t __heap_start;
-#define HEAP_MAX (&__heap_start) + 0x100000
+#define HEAP_MAX (&__heap_start) + 0x10000
 
 static char *heap_top;
 
@@ -14,14 +14,21 @@ void init_memory() {
 
 void *simple_malloc(unsigned int size) {
     if (size == 0) {
+        print_string("Invalid size\n");
         return NULL;
     }
+    size = (size + 3) & ~3; // align with 4 bytes
     if (heap_top + size >= HEAP_MAX) {
         print_string("Out of memory\n");
         return NULL;
     }
     void *ret = heap_top;
     heap_top += size;
+    print_string("Allocated ");
+    print_h((uint64_t)ret);
+    print_string(" with size ");
+    print_d(size);
+    print_string("\n");
     return ret;
 }
 

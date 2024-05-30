@@ -64,7 +64,7 @@ void timer_irq_handler() {
         head->func(head->arg);
         timer_t *temp = head;
         head = head->next;
-        kfree(temp);
+        // kfree(temp);
     }
 
     if (head != 0) core_timer_enable();

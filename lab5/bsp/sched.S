@@ -1,8 +1,8 @@
-#include <kernel/sched.h>
+// #include <kernel/sched.h>
 
 .globl cpu_switch_to
 cpu_switch_to:
-	mov	x10, #THREAD_CPU_CONTEXT
+	mov	x10, #0
 	add	x8, x0, x10             // x8 = the pointer points to current thread's cpu_context
 	mov	x9, sp
 	stp	x19, x20, [x8], #16		// store callee-saved registers
