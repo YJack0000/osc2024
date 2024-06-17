@@ -3,8 +3,6 @@
 #include <kernel/memory.h>
 #include <kernel/timer.h>
 
-#include "kernel/sched.h"
-
 typedef struct timer_t {
     void (*func)(void *);
     void *arg;
@@ -68,7 +66,7 @@ void timer_irq_handler() {
         head->func(head->arg);
         timer_t *temp = head;
         head = head->next;
-        // kfree(temp); // if free this multi_thread will crash
+        kfree(temp); // if free this multi_thread will crash
     }
 
     if (head != 0) core_timer_enable();
