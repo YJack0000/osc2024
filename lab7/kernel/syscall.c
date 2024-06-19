@@ -176,10 +176,12 @@ void run_fork_test() {
 
 int sys_open(trap_frame *tf, const char *pathname, int flags)
 {
+    printf("\r\n[SYSCALL] open - path: %s, flags: %x\r\n", pathname, flags);
     char abs_path[MAX_PATH_NAME];
     strcpy(abs_path, pathname);
     // update abs_path
     get_absolute_path(abs_path, get_current()->cwd);
+    printf("\r\n[SYSCALL] open - path: %s, flags: %x\r\n", abs_path, flags);
     for (int i = 0; i < MAX_FD; i++)
     {
         // find a usable fd
@@ -201,6 +203,7 @@ int sys_open(trap_frame *tf, const char *pathname, int flags)
 
 int sys_close(trap_frame *tf, int fd)
 {
+    printf("\r\n[SYSCALL] close - fd: %d\r\n", fd);
     // find an opened fd
     if(get_current()->fdtable->fds[fd])
     {
@@ -216,6 +219,7 @@ int sys_close(trap_frame *tf, int fd)
 
 long sys_write(trap_frame *tf, int fd, const void *buf, unsigned long count)
 {
+    printf("\r\n[SYSCALL] write - fd: %d, buf: %x, count: %d\r\n", fd, buf, count);
     // find an opened fd
     if (get_current()->fdtable->fds[fd])
     {
@@ -229,6 +233,7 @@ long sys_write(trap_frame *tf, int fd, const void *buf, unsigned long count)
 
 long sys_read(trap_frame *tf, int fd, void *buf, unsigned long count)
 {
+    printf("\r\n[SYSCALL] read - fd: %d, buf: %x, count: %d\r\n", fd, buf, count);
     // find an opened fd
     if (get_current()->fdtable->fds[fd])
     {
@@ -242,6 +247,7 @@ long sys_read(trap_frame *tf, int fd, void *buf, unsigned long count)
 
 long sys_mkdir(trap_frame *tf, const char *pathname, unsigned mode)
 {
+    printf("\r\n[SYSCALL] mkdir - path: %s, mode: %x\r\n", pathname, mode);
     char abs_path[MAX_PATH_NAME];
     strcpy(abs_path, pathname);
     get_absolute_path(abs_path, get_current()->cwd);
@@ -251,6 +257,7 @@ long sys_mkdir(trap_frame *tf, const char *pathname, unsigned mode)
 
 long sys_mount(trap_frame *tf, const char *src, const char *target, const char *filesystem, unsigned long flags, const void *data)
 {
+    printf("\r\n[SYSCALL] mount - src: %s, target: %s, filesystem: %s, flags: %x, data: %x\r\n", src, target, filesystem, flags, data);
     char abs_path[MAX_PATH_NAME];
     strcpy(abs_path, target);
     get_absolute_path(abs_path, get_current()->cwd);
@@ -261,6 +268,7 @@ long sys_mount(trap_frame *tf, const char *src, const char *target, const char *
 
 long sys_chdir(trap_frame *tf, const char *path)
 {
+    printf("\r\n[SYSCALL] chdir - path: %s\r\n", path);
     char abs_path[MAX_PATH_NAME];
     strcpy(abs_path, path);
     get_absolute_path(abs_path, get_current()->cwd);
@@ -271,6 +279,7 @@ long sys_chdir(trap_frame *tf, const char *path)
 
 long sys_lseek64(trap_frame *tf, int fd, long offset, int whence)
 {
+    printf("\r\n[SYSCALL] lseek64 - fd: %d, offset: %d, whence: %d\r\n", fd, offset, whence);
     if(whence == SEEK_SET) // used for dev_framebuffer
     {
         get_current()->fdtable->fds[fd]->f_pos = offset;

@@ -250,12 +250,12 @@ int vfs_mknod(char *pathname, int id) {
 /*    puts(testbufr);*/
 /*}*/
 
-char *get_absolute_path(char *path, char *curr_working_dir) {
+char *get_absolute_path(char *path, char *cwd) {
     // if relative path -> add root path
     if (path[0] != '/') {
         char tmp[MAX_PATH_NAME];
-        strcpy(tmp, curr_working_dir);
-        if (strcmp(curr_working_dir, "/") != 0) strtok(tmp, "/");
+        strcpy(tmp, cwd);
+        if (strcmp(cwd, "/") != 0) strtok(tmp, "/");
         strtok(tmp, path);
         strcpy(path, tmp);
     }

@@ -74,6 +74,6 @@ int vfs_mknod(char* pathname, int id);
 
 void init_rootfs();
 void vfs_test();
-char* get_absolute_path(char* path,char* curr_working_dir);
+char* get_absolute_path(char* path,char* cwd);
 
 #endif /* _VFS_H_ */

@@ -108,6 +108,7 @@ struct task_struct *kthread_create(void (*func)()) {
     task->context.lr = (unsigned long)func;
     task->context.sp = (unsigned long)task->user_stack + STACK_SIZE;
     task->context.fp = (unsigned long)task->user_stack + STACK_SIZE;
+    strcpy(task->cwd, "/");
     enqueue(&run_queue, task);
     return task;
 }

@@ -61,6 +61,7 @@ void exception_entry(trap_frame *tf) {
             sys_sigkill(tf->x0, tf->x1);
             break;
         case 11:
+            printf("sys_open: %s\n", (char *)tf->x0);
             sys_open(tf, (char*)tf->x0, tf->x1);      
             break;
         case 12:
