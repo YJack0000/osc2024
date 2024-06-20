@@ -31,12 +31,13 @@ int main() {
     // lab4
     init_kmalloc();
 
+    // lab7
+    init_rootfs();
+
     // lab5
     // sched_init();
     kthread_init();
 
-    // lab7
-    init_rootfs();
 
     puts("\nWelcome to YJack0000's shell\n");
 

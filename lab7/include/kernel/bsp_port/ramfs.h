@@ -29,6 +29,7 @@ typedef struct {
     char file_names[MAX_FILES][MAX_FILENAME_LENGTH];
     unsigned long file_sizes[MAX_FILES];
     int file_count;
+    char* file_data[MAX_FILES];
 } file_list_t;
 
 void init_ramfs_callback(void *base_addr);

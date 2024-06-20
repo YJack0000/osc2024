@@ -1,4 +1,5 @@
 #include <kernel/io.h>
+#include <kernel/lock.h>
 #include <kernel/memory.h>
 #include <kernel/sched.h>
 #include <lib/string.h>
@@ -45,7 +46,7 @@ void schedule() {
     struct task_struct *current = get_current();
     struct task_struct *next = current->next;
 
-    while(next->state != TASK_RUNNING) {
+    while (next->state != TASK_RUNNING) {
         next = next->next;
     }
 
@@ -97,6 +98,7 @@ void kthread_init() {
 }
 
 struct task_struct *kthread_create(void (*func)()) {
+    /*lock();*/
     struct task_struct *task = kmalloc(sizeof(struct task_struct));
     task->pid = thread_count++;
     task->state = TASK_RUNNING;
@@ -109,7 +111,15 @@ struct task_struct *kthread_create(void (*func)()) {
     task->context.sp = (unsigned long)task->user_stack + STACK_SIZE;
     task->context.fp = (unsigned long)task->user_stack + STACK_SIZE;
     strcpy(task->cwd, "/");
+
+    task->fdtable.count = 0;
+    for (int i = 0; i < MAX_FD; i++) task->fdtable.fds[i] = NULL;
+    vfs_open("/dev/uart", O_RDWR, &task->fdtable.fds[0]);  // stdin
+    vfs_open("/dev/uart", O_RDWR, &task->fdtable.fds[1]);  // stdout
+    vfs_open("/dev/uart", O_RDWR, &task->fdtable.fds[2]);  // stderr
+
     enqueue(&run_queue, task);
+    /*unlock();*/
     return task;
 }
 

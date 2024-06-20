@@ -46,7 +46,7 @@ struct task_struct {
     struct task_struct *next;
 
     char cwd[256];
-    struct fdtable fdtable[MAX_FD];
+    struct fdtable fdtable;
 };
 
 typedef struct task_queue_t {

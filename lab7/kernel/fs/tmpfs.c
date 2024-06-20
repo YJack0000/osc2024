@@ -20,7 +20,7 @@ int register_tmpfs() {
 
 int tmpfs_setup_mount(struct filesystem *fs, struct mount *_mount) {
     _mount->fs = fs;
-    _mount->root = tmpfs_create_vnode(0, dir_t);
+    _mount->root = tmpfs_create_vnode(0, DIR);
     return 0;
 }
 
@@ -107,8 +107,8 @@ int tmpfs_lookup(struct vnode *dir_node, struct vnode **target,
 int tmpfs_create(struct vnode *dir_node, struct vnode **target,
                  const char *component_name) {
     struct tmpfs_inode *inode = dir_node->internal;
-    if (inode->type != dir_t) {
-        puts("[ERROR] tmpfs create not dir_t\r\n");
+    if (inode->type != DIR) {
+        puts("[ERROR] tmpfs create not DIR\r\n");
         return -1;
     }
 
@@ -132,7 +132,7 @@ int tmpfs_create(struct vnode *dir_node, struct vnode **target,
         return -1;
     }
 
-    struct vnode *_vnode = tmpfs_create_vnode(0, file_t);
+    struct vnode *_vnode = tmpfs_create_vnode(0, FILE);
     inode->entry[child_idx] = _vnode;
 
     struct tmpfs_inode *newinode = _vnode->internal;
@@ -147,8 +147,8 @@ int tmpfs_mkdir(struct vnode *dir_node, struct vnode **target,
                 const char *component_name) {
     struct tmpfs_inode *inode = dir_node->internal;
 
-    if (inode->type != dir_t) {
-        puts("[ERROR] tmpfs mkdir not dir_t\r\n");
+    if (inode->type != DIR) {
+        puts("[ERROR] tmpfs mkdir not DIR\r\n");
         return -1;
     }
 
@@ -169,7 +169,7 @@ int tmpfs_mkdir(struct vnode *dir_node, struct vnode **target,
         return -1;
     }
 
-    struct vnode *_vnode = tmpfs_create_vnode(0, dir_t);
+    struct vnode *_vnode = tmpfs_create_vnode(0, DIR);
     inode->entry[child_idx] = _vnode;
 
     struct tmpfs_inode *newinode = _vnode->internal;

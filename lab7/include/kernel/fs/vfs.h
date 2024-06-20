@@ -5,7 +5,8 @@
 #include <kernel/fs/fdtable.h>
 
 #define MAX_PATH_NAME 255
-#define O_CREAT 00000100
+#define O_CREAT 100
+#define O_RDWR  000
 #define SEEK_SET 0
 #define MAX_FS_REG 0x50
 #define MAX_DEV_REG 0x10
@@ -15,8 +16,8 @@
 
 enum fsnode_type
 {
-    dir_t,
-    file_t
+    DIR,
+    FILE
 };
 
 
@@ -74,6 +75,6 @@ int vfs_mknod(char* pathname, int id);
 
 void init_rootfs();
 void vfs_test();
-char* get_absolute_path(char* path,char* cwd);
+char* get_absolute_path(char* path,char* xwd);
 
 #endif /* _VFS_H_ */

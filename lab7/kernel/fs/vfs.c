@@ -1,31 +1,41 @@
-#include <kernel/io.h>
-#include <kernel/memory.h>
+#include <kernel/fs/dev_framebuffer.h>
+#include <kernel/fs/dev_uart.h>
+#include <kernel/fs/initramfs.h>
 #include <kernel/fs/tmpfs.h>
 #include <kernel/fs/vfs.h>
+#include <kernel/io.h>
+#include <kernel/memory.h>
 #include <lib/string.h>
 
 struct mount *rootfs;
 struct filesystem reg_fs[MAX_FS_REG];
 struct file_operations reg_dev[MAX_DEV_REG];
 
-void init_rootfs()
-{
-    // tmpfs
+void init_rootfs() {
+    // cannot use vfs_mount because starting point is vfs_root, and it has
+    // nothing yet will mount at rootfs -> mount -> root instead of rootfs ->
+    // root
     int idx = register_tmpfs();
     rootfs = kmalloc(sizeof(struct mount));
     reg_fs[idx].setup_mount(&reg_fs[idx], rootfs);
 
-    /*// initramfs*/
-    /*vfs_mkdir("/initramfs");*/
-    /*register_initramfs();*/
-    /*vfs_mount("/initramfs","initramfs");*/
-    /**/
-    /*// dev_fs*/
-    /*vfs_mkdir("/dev");*/
-    /*int uart_id = init_dev_uart();*/
-    /*vfs_mknod("/dev/uart", uart_id);*/
+    vfs_mkdir("/initramfs");
+    register_initramfs();
+    vfs_mount("/initramfs", "initramfs");
+
+    vfs_mkdir("/dev");
+
+    int uart_id = init_dev_uart();
+    vfs_mknod("/dev/uart", uart_id);
+    printf("[INFO] uart_id: %d\n", uart_id);
+    /*struct vnode *uart_vnode;*/
+    /*vfs_lookup("/dev/uart", &uart_vnode);*/
+    /*printf("[INFO] dev uart vnode: %x\n", uart_vnode);*/
+
+    
     /*int framebuffer_id = init_dev_framebuffer();*/
     /*vfs_mknod("/dev/framebuffer", framebuffer_id);*/
+    /*printf("[INFO] framebuffer_id: %d\n", framebuffer_id);*/
 }
 
 int register_filesystem(struct filesystem *fs) {
@@ -43,7 +53,12 @@ int register_dev(struct file_operations *fo) {
     for (int i = 0; i < MAX_FS_REG; i++) {
         if (!reg_dev[i].open) {
             // return unique id for the assigned device
-            reg_dev[i] = *fo;
+            /*reg_dev[i] = *fo;*/
+            reg_dev[i].open = fo->open;
+            reg_dev[i].read = fo->read;
+            reg_dev[i].write = fo->write;
+            reg_dev[i].close = fo->close;
+
             return i;
         }
     }
@@ -62,7 +77,7 @@ struct filesystem *find_filesystem(const char *fs_name) {
 // file ops
 int vfs_open(const char *pathname, int flags, struct file **target) {
     // 1. Lookup pathname
-    // 3. Create a new file if O_CREAT is specified in flags and vnode not found
+    // 2. Create a new file if O_CREAT is specified in flags and vnode not found
     struct vnode *node;
     if (vfs_lookup(pathname, &node) != 0 && (flags & O_CREAT)) {
         // grep all of the directory path
@@ -89,18 +104,14 @@ int vfs_open(const char *pathname, int flags, struct file **target) {
         node->f_ops->open(node, target);
         (*target)->flags = flags;
         return 0;
-    } else  // 2. Create a new file handle for this vnode if found.
-    {
-        // attach opened file on the node
-        *target = kmalloc(sizeof(struct file));
-        node->f_ops->open(node, target);
-        (*target)->flags = flags;
-        return 0;
     }
 
-    // lookup error code shows if file exist or not or other error occurs
-    // 4. Return error code if fails
-    return -1;
+    // 2. Create a new file handle for this vnode if found.
+    // attach opened file on the node
+    *target = kmalloc(sizeof(struct file));
+    node->f_ops->open(node, target);
+    (*target)->flags = flags;
+    return 0;
 }
 
 // file ops
@@ -150,7 +161,7 @@ int vfs_mkdir(const char *pathname) {
         return 0;
     }
 
-    puts("[ERROR] vfs_mkdir cannot find pathname");
+    puts("[ERROR] vfs_MAX_OPEN_FILEmkdir cannot find pathname");
     return -1;
 }
 
@@ -159,12 +170,12 @@ int vfs_mount(const char *target, const char *filesystem) {
     // search for the target filesystem
     struct filesystem *fs = find_filesystem(filesystem);
     if (!fs) {
-        puts("[ERROR] vfs_mount cannot find filesystem\r\n");
+        printf("[ERROR] vfs_mount cannot find filesystem\r\n");
         return -1;
     }
 
     if (vfs_lookup(target, &dirnode) == -1) {
-        puts("[ERROR] vfs_mount cannot find dir\r\n");
+        printf("[ERROR] vfs_mount cannot find dir\r\n");
         return -1;
     } else {
         // mount fs on dirnode
@@ -216,7 +227,6 @@ int vfs_lookup(const char *pathname, struct vnode **target) {
     return 0;
 }
 
-// for device operations only
 int vfs_mknod(char *pathname, int id) {
     struct file *f = kmalloc(sizeof(struct file));
     // create leaf and its file operations
@@ -255,15 +265,15 @@ char *get_absolute_path(char *path, char *cwd) {
     if (path[0] != '/') {
         char tmp[MAX_PATH_NAME];
         strcpy(tmp, cwd);
-        if (strcmp(cwd, "/") != 0) strtok(tmp, "/");
-        strtok(tmp, path);
+        if (strcmp(cwd, "/") != 0) strcat(tmp, "/");
+        strcat(tmp, path);
         strcpy(path, tmp);
     }
 
     char absolute_path[MAX_PATH_NAME + 1] = {};
     int idx = 0;
     for (int i = 0; i < strlen(path); i++) {
-        // meet /..
+        // handle ..
         if (path[i] == '/' && path[i + 1] == '.' && path[i + 2] == '.') {
             for (int j = idx; j >= 0; j--) {
                 if (absolute_path[j] == '/') {
@@ -275,7 +285,7 @@ char *get_absolute_path(char *path, char *cwd) {
             continue;
         }
 
-        // ignore /.
+        // handle .
         if (path[i] == '/' && path[i + 1] == '.') {
             i++;
             continue;
@@ -284,6 +294,9 @@ char *get_absolute_path(char *path, char *cwd) {
         absolute_path[idx++] = path[i];
     }
     absolute_path[idx] = 0;
+
+    /*printf("[INFO] get_absolute_path, path: %s, cwd: %s, absolute_path: %s\r\n", path, cwd,*/
+    /*       absolute_path);*/
 
     return strcpy(path, absolute_path);
 }

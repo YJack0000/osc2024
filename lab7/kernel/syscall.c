@@ -1,13 +1,14 @@
+#include <bsp/asm/traps.h>
 #include <kernel/bsp_port/irq.h>
 #include <kernel/bsp_port/mailbox.h>
 #include <kernel/bsp_port/ramfs.h>
-#include <kernel/syscall.h>
 #include <kernel/bsp_port/uart.h>
 #include <kernel/io.h>
+#include <kernel/lock.h>
 #include <kernel/memory.h>
 #include <kernel/sched.h>
 #include <kernel/signal.h>
-#include <bsp/asm/traps.h>
+#include <kernel/syscall.h>
 #include <lib/string.h>
 #include <lib/utils.h>
 
@@ -23,28 +24,31 @@ size_t sys_uart_read(char *buf, size_t size) {
 
 size_t sys_uart_write(const char *buf, size_t size) {
     int i = 0;
-while (i < size) uart_send(buf[i++]);
+    while (i < size) uart_send(buf[i++]);
     return i;
 }
 
 int sys_exec(const char *file_name, char *const argv[]) {
-    unsigned long file_size = ramfs_get_file_size(file_name);
-    char *file_contents = kmalloc(file_size);
-    ramfs_get_file_contents(file_name, file_contents);
-
-    if (file_contents == NULL) {
-        puts("[ERROR] File not found: ");
-        puts(file_name);
-        puts("\n");
-        return 0;
+    struct file *file;
+    int ret = vfs_open(file_name, O_RDWR, &file);
+    if (ret == -1) {
+        printf("\r\n[ERROR] Cannot open file: %s", file_name);
+        return -1;
     }
-    puts("\n[INFO] Executing file: ");
-    puts(file_name);
-    puts("\n");
 
-    char *user_program = kmalloc(file_size);
+    int filesize = file->vnode->f_ops->getsize(file->vnode);
+    void *user_program = kmalloc(filesize);
+
+    if (user_program == NULL) {
+        printf("\r\n[ERROR] Cannot allocate memory for file: %s", file_name);
+        return -1;
+    }
+
+    vfs_read(file, user_program, filesize);
+    vfs_close(file);
+
     get_current()->state = TASK_STOPPED;
-    memcpy(user_program, file_contents, file_size);
+    vfs_read(file, user_program, filesize);
     get_current()->sigpending = 0;
     memset(get_current()->sighand, 0, sizeof(get_current()->sighand));
     get_current()->context.lr = (unsigned long)user_program;
@@ -52,7 +56,7 @@ int sys_exec(const char *file_name, char *const argv[]) {
 }
 
 int sys_fork(trap_frame *tf) {
-    disable_irq();
+    /*lock();*/
     struct task_struct *parent = get_current();
     struct task_struct *child = kthread_create(0);
 
@@ -73,7 +77,15 @@ int sys_fork(trap_frame *tf) {
     child_trap_frame->sp_el0 = (unsigned long)child->user_stack + sp_el0_off;
     child_trap_frame->x0 = 0;
 
-    enable_irq();
+    strcpy(child->cwd, parent->cwd);
+    for (int i = 0; i < MAX_FD; i++) {
+        if (parent->fdtable.fds[i]) {
+            child->fdtable.fds[i] = kmalloc(sizeof(struct file));
+            *child->fdtable.fds[i] = *parent->fdtable.fds[i];
+        }
+    }
+
+    /*unlock();*/
     return child->pid;
 }
 
@@ -125,6 +137,7 @@ void fork_test() {
     puts(")\n");
     int cnt = 1;
     int ret = 0;
+
     if ((ret = fork()) == 0) {
         puts("first child pid: ");
         print_d(getpid());
@@ -151,6 +164,7 @@ void fork_test() {
                 puts(", ptr: ");
                 print_h((unsigned long long)&cnt);
                 puts("\n");
+
                 for (int i = 0; i < 1000000; i++);
                 cnt++;
             }
@@ -174,21 +188,21 @@ void run_fork_test() {
     asm volatile("eret");
 }
 
-int sys_open(trap_frame *tf, const char *pathname, int flags)
-{
-    printf("\r\n[SYSCALL] open - path: %s, flags: %x\r\n", pathname, flags);
+int sys_open(trap_frame *tf, const char *pathname, int flags) {
+    /*printf("\r\n[SYSCALL] open - cwd: %s\r\n", get_current()->cwd);*/
+    /*printf("\r\n[SYSCALL] open-1 - path: %s, flags: %x\r\n", pathname, flags);*/
     char abs_path[MAX_PATH_NAME];
     strcpy(abs_path, pathname);
     // update abs_path
     get_absolute_path(abs_path, get_current()->cwd);
-    printf("\r\n[SYSCALL] open - path: %s, flags: %x\r\n", abs_path, flags);
-    for (int i = 0; i < MAX_FD; i++)
-    {
+    /*printf("\r\n[SYSCALL] open-2 - path: %s, flags: %x\r\n", abs_path,
+     * flags);*/
+    for (int i = 0; i < MAX_FD; i++) {
         // find a usable fd
-        if(!get_current()->fdtable->fds[i])
-        {
-            if(vfs_open(abs_path, flags, &get_current()->fdtable->fds[i])!=0)
-            {
+        if (!get_current()->fdtable.fds[i]) {
+            /*printf("\r\n[SYSCALL] open-3 - fd index: %d\r\n", i);*/
+            if (vfs_open(abs_path, flags, &get_current()->fdtable.fds[i]) !=
+                0) {
                 break;
             }
 
@@ -201,14 +215,12 @@ int sys_open(trap_frame *tf, const char *pathname, int flags)
     return -1;
 }
 
-int sys_close(trap_frame *tf, int fd)
-{
-    printf("\r\n[SYSCALL] close - fd: %d\r\n", fd);
+int sys_close(trap_frame *tf, int fd) {
+    /*printf("\r\n[SYSCALL] close - fd: %d\r\n", fd);*/
     // find an opened fd
-    if(get_current()->fdtable->fds[fd])
-    {
-        vfs_close(get_current()->fdtable->fds[fd]);
-        get_current()->fdtable->fds[fd] = 0;
+    if (get_current()->fdtable.fds[fd]) {
+        vfs_close(get_current()->fdtable.fds[fd]);
+        get_current()->fdtable.fds[fd] = 0;
         tf->x0 = 0;
         return 0;
     }
@@ -217,13 +229,12 @@ int sys_close(trap_frame *tf, int fd)
     return -1;
 }
 
-long sys_write(trap_frame *tf, int fd, const void *buf, unsigned long count)
-{
-    printf("\r\n[SYSCALL] write - fd: %d, buf: %x, count: %d\r\n", fd, buf, count);
+long sys_write(trap_frame *tf, int fd, const void *buf, unsigned long count) {
+    /*printf("\r\n[SYSCALL] write - fd: %d, buf: %x, count: %d\r\n", fd, buf,
+     * count);*/
     // find an opened fd
-    if (get_current()->fdtable->fds[fd])
-    {
-        tf->x0 = vfs_write(get_current()->fdtable->fds[fd], buf, count);
+    if (get_current()->fdtable.fds[fd]) {
+        tf->x0 = vfs_write(get_current()->fdtable.fds[fd], buf, count);
         return tf->x0;
     }
 
@@ -231,13 +242,12 @@ long sys_write(trap_frame *tf, int fd, const void *buf, unsigned long count)
     return tf->x0;
 }
 
-long sys_read(trap_frame *tf, int fd, void *buf, unsigned long count)
-{
-    printf("\r\n[SYSCALL] read - fd: %d, buf: %x, count: %d\r\n", fd, buf, count);
+long sys_read(trap_frame *tf, int fd, void *buf, unsigned long count) {
+    /*printf("\r\n[SYSCALL] read - fd: %d, buf: %x, count: %d\r\n", fd, buf,
+     * count);*/
     // find an opened fd
-    if (get_current()->fdtable->fds[fd])
-    {
-        tf->x0 = vfs_read(get_current()->fdtable->fds[fd], buf, count);
+    if (get_current()->fdtable.fds[fd]) {
+        tf->x0 = vfs_read(get_current()->fdtable.fds[fd], buf, count);
         return tf->x0;
     }
 
@@ -245,9 +255,8 @@ long sys_read(trap_frame *tf, int fd, void *buf, unsigned long count)
     return tf->x0;
 }
 
-long sys_mkdir(trap_frame *tf, const char *pathname, unsigned mode)
-{
-    printf("\r\n[SYSCALL] mkdir - path: %s, mode: %x\r\n", pathname, mode);
+long sys_mkdir(trap_frame *tf, const char *pathname, unsigned mode) {
+    /*printf("\r\n[SYSCALL] mkdir - path: %s, mode: %x\r\n", pathname, mode);*/
     char abs_path[MAX_PATH_NAME];
     strcpy(abs_path, pathname);
     get_absolute_path(abs_path, get_current()->cwd);
@@ -255,20 +264,21 @@ long sys_mkdir(trap_frame *tf, const char *pathname, unsigned mode)
     return tf->x0;
 }
 
-long sys_mount(trap_frame *tf, const char *src, const char *target, const char *filesystem, unsigned long flags, const void *data)
-{
-    printf("\r\n[SYSCALL] mount - src: %s, target: %s, filesystem: %s, flags: %x, data: %x\r\n", src, target, filesystem, flags, data);
+long sys_mount(trap_frame *tf, const char *src, const char *target,
+               const char *filesystem, unsigned long flags, const void *data) {
+    /*printf(*/
+    /*    "\r\n[SYSCALL] mount - src: %s, target: %s, filesystem: %s, flags: %x\r\n",*/
+    /*    src, target, filesystem, flags);*/
     char abs_path[MAX_PATH_NAME];
     strcpy(abs_path, target);
-    get_absolute_path(abs_path, get_current()->cwd);
+    /*printf("\r\n[SYSCALL] mount - abs_path: %s\r\n", abs_path);*/
 
-    tf->x0 = vfs_mount(abs_path,filesystem);
+    tf->x0 = vfs_mount(abs_path, filesystem);
     return tf->x0;
 }
 
-long sys_chdir(trap_frame *tf, const char *path)
-{
-    printf("\r\n[SYSCALL] chdir - path: %s\r\n", path);
+long sys_chdir(trap_frame *tf, const char *path) {
+    /*printf("\r\n[SYSCALL] chdir - path: %s\r\n", path);*/
     char abs_path[MAX_PATH_NAME];
     strcpy(abs_path, path);
     get_absolute_path(abs_path, get_current()->cwd);
@@ -277,15 +287,14 @@ long sys_chdir(trap_frame *tf, const char *path)
     return 0;
 }
 
-long sys_lseek64(trap_frame *tf, int fd, long offset, int whence)
-{
-    printf("\r\n[SYSCALL] lseek64 - fd: %d, offset: %d, whence: %d\r\n", fd, offset, whence);
-    if(whence == SEEK_SET) // used for dev_framebuffer
+long sys_lseek64(trap_frame *tf, int fd, long offset, int whence) {
+    /*printf("\r\n[SYSCALL] lseek64 - fd: %d, offset: %d, whence: %d\r\n", fd,
+     * offset, whence);*/
+    if (whence == SEEK_SET)  // used for dev_framebuffer
     {
-        get_current()->fdtable->fds[fd]->f_pos = offset;
+        get_current()->fdtable.fds[fd]->f_pos = offset;
         tf->x0 = offset;
-    }
-    else // other is not supported
+    } else  // other is not supported
     {
         tf->x0 = -1;
     }
@@ -296,9 +305,9 @@ long sys_lseek64(trap_frame *tf, int fd, long offset, int whence)
 // ioctl 0 will be use to get info
 // there will be default value in info
 // if it works with default value, you can ignore this syscall
-long sys_ioctl(trap_frame *tf, int fb, unsigned long request, void *info)
-{
-    printf("\r\n[SYSCALL] ioctl - fb: %d, request: %x, info: %x\r\n", fb, request, info);
+long sys_ioctl(trap_frame *tf, int fb, unsigned long request, void *info) {
+    /*printf("\r\n[SYSCALL] ioctl - fb: %d, request: %x, info: %x\r\n", fb,
+     * request, info);*/
     tf->x0 = 0;
     return tf->x0;
 }

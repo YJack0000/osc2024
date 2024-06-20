@@ -37,10 +37,11 @@ file_list_t *ramfs_get_file_list() {
                copy_length);
         file_list.file_names[file_list.file_count][copy_length] = '\0';
         file_list.file_sizes[file_list.file_count] = filesize;
-        file_list.file_count++;
 
         uint32_t headsize = align4(sizeof(cpio_t) + namesize);
         uint32_t datasize = align4(filesize);
+        file_list.file_data[file_list.file_count] = (void *)fptr + headsize;
+        file_list.file_count++;
 
         fptr += headsize + datasize;
     }

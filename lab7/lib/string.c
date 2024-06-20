@@ -8,6 +8,12 @@ int strcmp(const char *a, const char *b) {
     return *(const unsigned char *)a - *(const unsigned char *)b;
 }
 
+char* strcat (char *dest, const char *src)
+{
+  strcpy (dest + strlen (dest), src);
+  return dest;
+}
+
 char *strcpy(char *dest, const char *src) {
     char *start = dest;
 
